@@ -118,7 +118,7 @@ function Report() {
     if (!aiData || !aiPhotoUrl) return;
     setAiPhase("submitting");
     try {
-      const status = isAdmin ? "lost" : "pending";
+      const status = "lost";
       const { data, error } = await supabase.rpc("insert_item", {
         item_title: aiData.name,
         item_description: aiData.description,
@@ -152,7 +152,7 @@ function Report() {
     setSubmitting(true);
     try {
       const photoUrl = await uploadPhoto("items", photo, session.user.id);
-      const status = isAdmin ? "lost" : "pending";
+      const status = "lost";
       const { data, error } = await supabase.rpc("insert_item", {
         item_title: title,
         item_description: description,
