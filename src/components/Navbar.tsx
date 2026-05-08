@@ -15,10 +15,10 @@ export function Navbar() {
   const handleLogin = async () => {
     try {
       // Determine the correct redirect URL
-      const isLocal = window.location.hostname === "localhost";
+      const isLocal = window.location.hostname === 'localhost';
       const redirectUrl = isLocal
-        ? "http://localhost:3000/auth/callback"    // hardcoded for local dev
-        : `${window.location.origin}/auth/callback`; // dynamic for production
+      ? 'http://localhost:3000/auth/callback'
+      : `${window.location.origin}/auth/callback`;
 
       console.log("Redirecting to:", redirectUrl); // debug
 
