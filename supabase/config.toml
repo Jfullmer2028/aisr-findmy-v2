@@ -1,0 +1,10 @@
+project_id = "ynnzlbfipcypylkvxarj"
+
+[functions.embed-search]
+verify_jwt = false
+
+[functions.embed-item]
+verify_jwt = false
+
+[functions.analyze-photo]
+verify_jwt = false
