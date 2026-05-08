@@ -52,89 +52,86 @@ function Report() {
   };
 
   const callAnalyzePhoto = async (file: File) => {
-  // Validate input
-  if (!(file instanceof Blob)) {
-    throw new Error("Invalid file provided");
-  }
-
-  // Convert to base64
-  const base64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
-  });
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-  try {
-    const response = await fetch(
-      "https://uqvfbyhamlctugixpxxb.supabase.co/functions/v1/analyze-photo",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ image_base64: base64, mime_type: file.type }),
-        signal: controller.signal,
-      }
-    );
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    if (!(file instanceof Blob)) {
+      throw new Error("Invalid file provided");
     }
-    const data = await response.json();
-    if (data.error) throw new Error(data.error);
-    return data;
-  } catch (err) {
-    clearTimeout(timeoutId);
-    console.error("callAnalyzePhoto error:", err);
-    throw new Error(err.message || "Request failed or timed out");
-  }
-};
+
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const response = await fetch(
+        "https://uqvfbyhamlctugixpxxb.supabase.co/functions/v1/analyze-photo",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ image_base64: base64, mime_type: file.type }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.error("callAnalyzePhoto error:", err);
+      throw new Error(err.message || "Request failed or timed out");
+    }
+  };
 
   const onAiPhoto = async (f: File | null) => {
-  if (!f) return;
-  if (!(await checkRateLimit())) return toast.error("Rate limit: 5 reports per day");
-  setAiPhase("uploading");
-  try {
-    // Upload to storage (to get a permanent URL for display)
-    const url = await uploadPhoto("items", f, session.user.id);
-    setAiPhotoUrl(url);
-    setAiPhase("analyzing");
-    // Analyze using the original File object (not the URL)
-    const data = await callAnalyzePhoto(f);
-    setAiData(data);
-    setAiLocation(data.location_guess || "");
-    setAiPhase("review");
-  } catch (e: any) {
-    console.error("AI analysis error:", e);
-    toast.error("AI analysis failed: " + e.message + " — using Manual mode.");
-    setAiPhase("idle");
-    setAiPhotoUrl(null);
-  }
-};
+    if (!f) return;
+    if (!(await checkRateLimit())) return toast.error("Rate limit: 5 reports per day");
+    setAiPhase("uploading");
+    try {
+      const url = await uploadPhoto("items", f, session.user.id);
+      setAiPhotoUrl(url);
+      setAiPhase("analyzing");
+      const data = await callAnalyzePhoto(f);
+      setAiData(data);
+      setAiLocation(data.location_guess || "");
+      setAiPhase("review");
+    } catch (e: any) {
+      console.error("AI analysis error:", e);
+      toast.error("AI analysis failed: " + e.message + " — using Manual mode.");
+      setAiPhase("idle");
+      setAiPhotoUrl(null);
+    }
+  };
 
   const aiConfirmSubmit = async () => {
     if (!aiData || !aiPhotoUrl) return;
     setAiPhase("submitting");
     try {
       const status = isAdmin ? "lost" : "pending";
-      const { data: inserted, error } = await supabase.from("items").insert({
-        title: aiData.name,
-        description: aiData.description,
-        category: aiData.category,
-        location_found: aiLocation,
-        photo_url: aiPhotoUrl,
-        status,
-        submitted_by: session.user.id,
-      }).select("id").single();
+      const { data, error } = await supabase.rpc("insert_item", {
+        item_title: aiData.name,
+        item_description: aiData.description,
+        item_category: aiData.category,
+        item_location: aiLocation,
+        item_photo_url: aiPhotoUrl,
+        item_status: status,
+      });
       if (error) throw error;
-      // Generate embedding for search (optional, can be done on the server)
-      supabase.functions.invoke("embed-item", { body: { item_id: inserted.id } }).catch(() => {});
+      const itemId = data?.id;
+      if (itemId) {
+        supabase.functions.invoke("embed-item", { body: { item_id: itemId } }).catch(() => {});
+      }
       toast.success(isAdmin ? "Item published" : "Submitted for admin review");
       navigate({ to: "/dashboard" });
     } catch (e: any) {
@@ -156,12 +153,19 @@ function Report() {
     try {
       const photoUrl = await uploadPhoto("items", photo, session.user.id);
       const status = isAdmin ? "lost" : "pending";
-      const { data: inserted, error } = await supabase.from("items").insert({
-        title, description, category, location_found: location, photo_url: photoUrl,
-        status, submitted_by: session.user.id,
-      }).select("id").single();
+      const { data, error } = await supabase.rpc("insert_item", {
+        item_title: title,
+        item_description: description,
+        item_category: category,
+        item_location: location,
+        item_photo_url: photoUrl,
+        item_status: status,
+      });
       if (error) throw error;
-      supabase.functions.invoke("embed-item", { body: { item_id: inserted.id } }).catch(() => {});
+      const itemId = data?.id;
+      if (itemId) {
+        supabase.functions.invoke("embed-item", { body: { item_id: itemId } }).catch(() => {});
+      }
       toast.success(isAdmin ? "Item published" : "Submitted for admin review");
       navigate({ to: "/dashboard" });
     } catch (e: any) {
