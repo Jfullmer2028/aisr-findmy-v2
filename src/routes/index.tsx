@@ -39,37 +39,34 @@ function Home() {
   if (!q.trim()) return;
   setLoading(true);
   try {
-    // Direct fetch with explicit anon key
-    const response = await fetch(
-      "https://uqvfbyhamlctugixpxxb.supabase.co/functions/v1/embed-search",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ query: q }),
-      }
-    );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    if (data.results && data.results.length > 0) {
-      setResults(data.results);
-      setSearchMode(data.mode || "ai");
-    } else {
-      // Fallback to direct text search
-      const { data: fallback, error: fallbackErr } = await supabase
+    // Try AI/fuzzy edge function
+    const { data, error } = await supabase.functions.invoke("embed-search", {
+      body: { query: q }
+    });
+    if (error) throw error;
+    
+    let resultsList = data.results || [];
+    
+    // If edge function returns nothing, fallback to direct text search
+    if (resultsList.length === 0) {
+      const { data: directResults, error: directError } = await supabase
         .from("items")
         .select("*")
         .ilike("title", `%${q}%`)
         .eq("status", "lost");
-      if (fallbackErr) throw fallbackErr;
-      setResults(fallback || []);
-      setSearchMode("text-fallback");
+      if (directError) throw directError;
+      resultsList = directResults || [];
+    }
+    
+    setResults(resultsList);
+    setSearchMode(resultsList.length > 0 ? (data.mode || "ai") : "direct-text");
+    
+    if (resultsList.length === 0) {
+      toast.info("No matching items found. Try different keywords.");
     }
   } catch (err) {
     console.error("Search error:", err);
-    toast.error("Search failed. Using manual mode?");
+    toast.error("Search failed");
     setResults([]);
   } finally {
     setLoading(false);
