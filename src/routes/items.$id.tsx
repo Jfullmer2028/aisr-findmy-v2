@@ -38,19 +38,23 @@ function ItemDetail() {
     if (!session?.user || !item) return;
     setClaiming(true);
     try {
-      const { error } = await supabase
-        .from("items")
-        .update({ status: "claimed", claimed_at: new Date().toISOString() })
-        .eq("id", item.id);
+      // Use RPC to claim item (bypasses RLS)
+      const { data, error } = await supabase.rpc("claim_item", {
+        item_id: item.id,
+        claimant_id: session.user.id,
+      });
       if (error) throw error;
-      // Optional record in claims table (best-effort, ignore failures)
+      if (data?.error) throw new Error(data.error);
+
+      // Optional: insert into claims table for tracking (best-effort)
       supabase.from("claims").insert({
         item_id: item.id,
         claimant_id: session.user.id,
         status: "approved",
-      }).then(() => {});
+      }).catch(() => {});
+
       toast.success(`Item claimed. Pick it up at ${item.location_found || "the front office"}. You have 7 days to collect.`, { duration: 8000 });
-      load();
+      load(); // refresh item to show updated status
     } catch (e: any) {
       toast.error(e.message || "Failed to claim");
     } finally { setClaiming(false); }
