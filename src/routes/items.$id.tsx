@@ -35,30 +35,36 @@ function ItemDetail() {
   useEffect(() => { load(); }, [id]);
 
   const claimItem = async () => {
-    if (!session?.user || !item) return;
-    setClaiming(true);
-    try {
-      // Use RPC to claim item (bypasses RLS)
-      const { data, error } = await supabase.rpc("claim_item", {
-        item_id: item.id,
-        claimant_id: session.user.id,
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+  if (!session?.user || !item) return;
+  setClaiming(true);
+  try {
+    // Use RPC to claim item (bypasses RLS)
+    const { data, error } = await supabase.rpc("claim_item", {
+      item_id: item.id,
+      claimant_id: session.user.id,
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
 
-      // Optional: insert into claims table for tracking (best-effort)
-      supabase.from("claims").insert({
+    // Optional: insert into claims table for tracking (best-effort)
+    supabase
+      .from("claims")
+      .insert({
         item_id: item.id,
         claimant_id: session.user.id,
         status: "approved",
-      }).catch(() => {});
+      })
+      .then(() => {})
+      .catch((err) => console.error("Failed to insert claim record:", err));
 
-      toast.success(`Item claimed. Pick it up at ${item.location_found || "the front office"}. You have 7 days to collect.`, { duration: 8000 });
-      load(); // refresh item to show updated status
-    } catch (e: any) {
-      toast.error(e.message || "Failed to claim");
-    } finally { setClaiming(false); }
-  };
+    toast.success(`Item claimed. Pick it up at ${item.location_found || "the front office"}. You have 7 days to collect.`, { duration: 8000 });
+    load(); // refresh item to show updated status
+  } catch (e: any) {
+    toast.error(e.message || "Failed to claim");
+  } finally {
+    setClaiming(false);
+  }
+};
 
   const adminAction = async (action: "claimed" | "collected" | "lost" | "delete" | "extend") => {
     if (!item) return;
